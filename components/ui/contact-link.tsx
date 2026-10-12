@@ -1,6 +1,8 @@
+"use client";
+
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { getWhatsAppUrl } from "../../features/content/site-content";
+import { usePublicSiteContent } from "../layout/public-site-content-provider";
 
 type ContactLinkProps = {
   children: ReactNode;
@@ -13,9 +15,16 @@ export function ContactLink({
   children,
   className,
   message,
-  fallbackHref = "/#kontak",
+  fallbackHref = "/#booking",
 }: ContactLinkProps) {
-  const href = getWhatsAppUrl(message);
+  const content = usePublicSiteContent();
+  const number =
+    content.practice.whatsappNumber ??
+    content.profile.phone.replace(/\D/g, "");
+  const href =
+    !content.isDemo && /^[1-9]\d{7,14}$/.test(number)
+      ? `https://wa.me/${number}?text=${encodeURIComponent(message)}`
+      : null;
 
   if (!href) {
     return (

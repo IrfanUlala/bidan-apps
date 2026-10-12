@@ -4,6 +4,7 @@ import {
   ArrowDownToLine,
   ArrowUpRight,
   CalendarCheck,
+  CalendarDays,
   CalendarPlus,
   Check,
   ChevronRight,
@@ -15,7 +16,10 @@ import {
   Plus,
   RotateCcw,
   Search,
+  Settings2,
   ShieldAlert,
+  Stethoscope,
+  Store,
   Trash2,
   Users,
   Wallet,
@@ -37,9 +41,19 @@ import {
   type CustomerInquiry,
   type InquiryStatus,
 } from "./admin-data";
-import { siteContent } from "../content/site-content";
+import { siteContent, type SiteContent } from "../content/site-content";
+import { readSavedSiteContent, saveSiteContent } from "../content/site-settings";
+import { SiteContentManager, type ContentSection } from "./site-content-manager";
+import {
+  AdminButton,
+  DateInput,
+  FormLabel,
+  SelectInput,
+  TextInput,
+  TextareaInput,
+} from "../../components/ui/admin-form-controls";
 
-type AdminSection = "overview" | "bookings" | "inquiries" | "reports";
+type AdminSection = "overview" | "bookings" | "inquiries" | "reports" | ContentSection;
 
 const storageKey = "ruangbunda-admin-demo-v1";
 
@@ -52,6 +66,10 @@ const navItems: {
   { id: "bookings", label: "Booking", icon: CalendarCheck },
   { id: "inquiries", label: "Pertanyaan", icon: MessageCircleMore },
   { id: "reports", label: "Laporan", icon: ClipboardList },
+  { id: "profile", label: "Profil usaha", icon: Store },
+  { id: "services", label: "Layanan", icon: Stethoscope },
+  { id: "schedule", label: "Jadwal praktik", icon: CalendarDays },
+  { id: "activities", label: "List kegiatan", icon: Settings2 },
 ];
 
 const bookingStatuses: BookingStatus[] = [
@@ -93,15 +111,15 @@ function formatTime(date: string): string {
   }).format(new Date(date));
 }
 
-function serviceTitle(serviceId: string): string {
+function serviceTitle(serviceId: string, content: SiteContent = siteContent): string {
   return (
-    siteContent.services.find((service) => service.id === serviceId)?.title ??
+    content.services.find((service) => service.id === serviceId)?.title ??
     "Layanan lain"
   );
 }
 
-function servicePrice(serviceId: string): number {
-  const price = siteContent.services.find(
+function servicePrice(serviceId: string, content: SiteContent = siteContent): number {
+  const price = content.services.find(
     (service) => service.id === serviceId,
   )?.price;
   return price ? Number(price.replace(/\D/g, "")) || 0 : 0;
@@ -141,6 +159,7 @@ function greetingName(date = new Date()): string {
 export function AdminDashboard() {
   const [section, setSection] = useState<AdminSection>("overview");
   const [data, setData] = useState<AdminDemoData>({ bookings: [], inquiries: [] });
+  const [content, setContent] = useState<SiteContent>(siteContent);
   const [hydrated, setHydrated] = useState(false);
   const [storageMessage, setStorageMessage] = useState("");
   const [today, setToday] = useState("");
@@ -155,6 +174,15 @@ export function AdminDashboard() {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       try {
+        try {
+          setContent(readSavedSiteContent());
+        } catch (error) {
+          console.error("Pengaturan website tersimpan tidak dapat dibaca.", error);
+          setContent(siteContent);
+          setStorageMessage(
+            "Pengaturan website tidak bisa dibaca. Konten contoh dimuat kembali; periksa pengaturan yang tersimpan.",
+          );
+        }
         const saved = window.localStorage.getItem(storageKey);
         if (saved) {
           const parsed: unknown = JSON.parse(saved);
@@ -208,7 +236,7 @@ export function AdminDashboard() {
     (booking) => booking.status === "Selesai",
   );
   const estimatedRevenue = completedBookings.reduce(
-    (total, booking) => total + servicePrice(booking.serviceId),
+    (total, booking) => total + servicePrice(booking.serviceId, content),
     0,
   );
 
@@ -220,13 +248,13 @@ export function AdminDashboard() {
           bookingFilter === "Semua status" || booking.status === bookingFilter,
       )
       .filter((booking) =>
-        [booking.id, booking.customerName, booking.phone, serviceTitle(booking.serviceId)]
+        [booking.id, booking.customerName, booking.phone, serviceTitle(booking.serviceId, content)]
           .join(" ")
           .toLocaleLowerCase("id-ID")
           .includes(query),
       )
       .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
-  }, [bookingFilter, bookingSearch, data.bookings]);
+  }, [bookingFilter, bookingSearch, content, data.bookings]);
 
   const filteredInquiries = useMemo(() => {
     const query = inquirySearch.trim().toLocaleLowerCase("id-ID");
@@ -251,17 +279,30 @@ export function AdminDashboard() {
     (booking) => booking.status === "Selesai",
   );
   const monthlyRevenue = monthlyCompleted.reduce(
-    (total, booking) => total + servicePrice(booking.serviceId),
+    (total, booking) => total + servicePrice(booking.serviceId, content),
     0,
   );
   const maxServiceCount = Math.max(
     1,
-    ...siteContent.services.map(
+    ...content.services.map(
       (service) =>
         monthlyCompleted.filter((booking) => booking.serviceId === service.id)
           .length,
     ),
   );
+
+  function updateSiteContent(nextContent: SiteContent) {
+    try {
+      saveSiteContent(nextContent);
+      setContent(nextContent);
+      setStorageMessage("Konten website tersimpan pada browser ini.");
+    } catch (error) {
+      console.error("Pengaturan situs gagal disimpan.", error);
+      setStorageMessage(
+        "Pengaturan situs gagal disimpan. Pastikan penyimpanan browser tersedia dan URL icon/favikon valid.",
+      );
+    }
+  }
 
   function updateBookingStatus(id: string, status: BookingStatus) {
     setData((current) => ({
@@ -318,7 +359,7 @@ export function AdminDashboard() {
     if (
       !customerName ||
       !phone ||
-      !siteContent.services.some((service) => service.id === serviceId) ||
+      !content.services.some((service) => service.id === serviceId) ||
       !date ||
       !time
     ) {
@@ -374,7 +415,7 @@ export function AdminDashboard() {
         booking.id,
         booking.customerName,
         booking.phone,
-        serviceTitle(booking.serviceId),
+        serviceTitle(booking.serviceId, content),
         booking.date,
         booking.time,
         booking.status,
@@ -403,14 +444,23 @@ export function AdminDashboard() {
     bookings: "Kelola booking",
     inquiries: "Pertanyaan pelanggan",
     reports: "Laporan praktik",
+    profile: "Profil usaha",
+    services: "Layanan",
+    schedule: "Jadwal praktik",
+    activities: "List kegiatan",
   };
 
   return (
     <div className="admin-container">
       <aside className="admin-sidebar" aria-label="Navigasi admin">
         <div className="admin-profile">
-          <div className="admin-avatar"><Heart size={19} aria-hidden="true" /></div>
-          <div><strong>Ruang Bunda</strong><span>Admin praktik · DEMO</span></div>
+          <div className="admin-avatar">
+            {content.practice.iconUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={content.practice.iconUrl} alt="" />
+            ) : <Heart size={19} aria-hidden="true" />}
+          </div>
+          <div><strong>{content.practice.businessName}</strong><span>{content.profile.name} · DEMO</span></div>
         </div>
         <span className="admin-nav-label">MENU UTAMA</span>
         <nav className="admin-nav">
@@ -454,7 +504,7 @@ export function AdminDashboard() {
 
         <div className="admin-warning" role="note">
           <ShieldAlert size={18} aria-hidden="true" />
-          <p><strong>ADMIN DEMO — tidak untuk operasional pasien.</strong> Data tersimpan hanya di browser perangkat ini (localStorage), tidak tersinkron ke server, belum memiliki login, dan tidak boleh diisi data pasien sungguhan.</p>
+          <p><strong>ADMIN DEMO — tidak untuk operasional pasien.</strong> Booking dan pengaturan website tersimpan hanya di browser perangkat ini (localStorage), belum memiliki login atau sinkronisasi server, dan tidak boleh diisi data pasien sungguhan.</p>
         </div>
         {storageMessage && <p className="admin-storage-message" role="status">{storageMessage}</p>}
 
@@ -472,12 +522,15 @@ export function AdminDashboard() {
                 estimatedRevenue={estimatedRevenue}
                 today={today}
                 greeting={greeting}
+                midwifeName={content.profile.name}
+                content={content}
                 onNavigate={setSection}
               />
             )}
             {section === "bookings" && (
               <BookingsSection
                 bookings={filteredBookings}
+                content={content}
                 query={bookingSearch}
                 filter={bookingFilter}
                 showForm={showBookingForm}
@@ -510,16 +563,27 @@ export function AdminDashboard() {
                 completed={monthlyCompleted}
                 revenue={monthlyRevenue}
                 maxServiceCount={maxServiceCount}
+                services={content.services}
                 onMonth={setReportMonth}
                 onExport={() => exportBookings(selectedMonthBookings, `ruang-bunda-laporan-${reportMonth}-demo.csv`)}
+              />
+            )}
+            {(section === "profile" ||
+              section === "services" ||
+              section === "schedule" ||
+              section === "activities") && (
+              <SiteContentManager
+                section={section}
+                content={content}
+                onSave={updateSiteContent}
               />
             )}
           </>
         )}
 
         <footer className="admin-footer">
-          <span>© Ruang Bunda · Panel admin demo</span>
-          <span>Konten situs publik dikelola terpisah di tahap integrasi admin.</span>
+          <span>© {content.practice.businessName} · Panel admin demo</span>
+          <span>Perubahan konten publik tampil pada browser ini setelah disimpan.</span>
         </footer>
       </main>
     </div>
@@ -535,6 +599,8 @@ function DashboardSection({
   estimatedRevenue,
   today,
   greeting,
+  midwifeName,
+  content,
   onNavigate,
 }: {
   bookings: Booking[];
@@ -545,6 +611,8 @@ function DashboardSection({
   estimatedRevenue: number;
   today: string;
   greeting: string;
+  midwifeName: string;
+  content: SiteContent;
   onNavigate: (section: AdminSection) => void;
 }) {
   const sortedToday = [...todayBookings].sort((a, b) => a.time.localeCompare(b.time));
@@ -557,7 +625,7 @@ function DashboardSection({
   return (
     <section className="admin-section-content" aria-label="Ringkasan praktik">
       <div className="admin-welcome">
-        <div><p className="admin-eyebrow">RINGKASAN PRAKTIK</p><h2>{greeting}, Bidan Contoh <span aria-hidden="true">✿</span></h2><p>Berikut ringkasan aktivitas Ruang Bunda. Seluruh nama dan angka adalah simulasi.</p></div>
+        <div><p className="admin-eyebrow">RINGKASAN PRAKTIK</p><h2>{greeting}, {midwifeName} <span aria-hidden="true">✿</span></h2><p>Berikut ringkasan aktivitas {content.practice.businessName}. Seluruh nama dan angka adalah simulasi.</p></div>
         <button type="button" className="admin-secondary-button" onClick={() => onNavigate("reports")}><ClipboardList size={15} aria-hidden="true" /> Lihat laporan</button>
       </div>
       <div className="admin-stats-grid">
@@ -571,7 +639,7 @@ function DashboardSection({
           <div className="admin-panel-heading"><div><h3>Jadwal hari ini</h3><p>{formatDate(today)} · {todayBookings.length} booking</p></div><button type="button" className="admin-text-button" onClick={() => onNavigate("bookings")}>Semua booking <ArrowUpRight size={14} aria-hidden="true" /></button></div>
           {sortedToday.length ? (
             <div className="admin-agenda">{sortedToday.map((booking) => (
-              <div className="admin-agenda-row" key={booking.id}><time>{booking.time}</time><span className="admin-agenda-mark" /><div className="admin-agenda-main"><strong>{booking.customerName}</strong><span>{serviceTitle(booking.serviceId)} · {booking.phone}</span></div><StatusBadge status={booking.status} /></div>
+              <div className="admin-agenda-row" key={booking.id}><time>{booking.time}</time><span className="admin-agenda-mark" /><div className="admin-agenda-main"><strong>{booking.customerName}</strong><span>{serviceTitle(booking.serviceId, content)} · {booking.phone}</span></div><StatusBadge status={booking.status} /></div>
             ))}</div>
           ) : <EmptyState title="Belum ada booking hari ini" text="Booking baru akan muncul di agenda ini." />}
           {confirmed > 0 && <p className="admin-inline-note"><Check size={14} aria-hidden="true" /> {confirmed} jadwal sudah dikonfirmasi.</p>}
@@ -612,6 +680,7 @@ function StatCard({
 
 function BookingsSection({
   bookings,
+  content,
   query,
   filter,
   showForm,
@@ -625,6 +694,7 @@ function BookingsSection({
   onExport,
 }: {
   bookings: Booking[];
+  content: SiteContent;
   query: string;
   filter: string;
   showForm: boolean;
@@ -640,11 +710,11 @@ function BookingsSection({
   return (
     <section className="admin-section-content">
       <div className="admin-page-intro"><div><h2>Daftar booking</h2><p>Atur jadwal, status, dan informasi booking. Jangan catat detail kesehatan pelanggan.</p></div><div className="admin-action-group"><button className="admin-secondary-button" type="button" onClick={onExport}><ArrowDownToLine size={15} aria-hidden="true" /> Ekspor CSV</button><button className="admin-add-button" type="button" onClick={onShowForm}><Plus size={16} aria-hidden="true" /> Buat booking</button></div></div>
-      {showForm && <BookingForm onClose={onCloseForm} onSubmit={onCreate} />}
+      {showForm && <BookingForm services={content.services} onClose={onCloseForm} onSubmit={onCreate} />}
       <div className="admin-panel admin-table-panel">
-        <div className="admin-table-toolbar"><div className="admin-search"><Search size={16} aria-hidden="true" /><label className="sr-only" htmlFor="booking-search">Cari booking</label><input id="booking-search" value={query} onChange={(event) => onQuery(event.target.value)} placeholder="Cari nama, ID, nomor, layanan…" /></div><label className="admin-select-label">Status<select value={filter} onChange={(event) => onFilter(event.target.value)}><option>Semua status</option>{bookingStatuses.map((status) => <option key={status}>{status}</option>)}</select></label><span className="admin-result-count">{bookings.length} booking</span></div>
+        <div className="admin-table-toolbar"><div className="admin-search"><Search size={16} aria-hidden="true" /><label className="sr-only" htmlFor="booking-search">Cari booking</label><TextInput id="booking-search" value={query} onChange={(event) => onQuery(event.target.value)} placeholder="Cari nama, ID, nomor, layanan…" /></div><FormLabel className="admin-select-label">Status<SelectInput value={filter} onChange={(event) => onFilter(event.target.value)}><option>Semua status</option>{bookingStatuses.map((status) => <option key={status}>{status}</option>)}</SelectInput></FormLabel><span className="admin-result-count">{bookings.length} booking</span></div>
         <div className="admin-table-scroll"><table className="admin-table"><thead><tr><th>PELANGGAN</th><th>LAYANAN</th><th>JADWAL</th><th>STATUS</th><th>AKSI</th></tr></thead><tbody>
-          {bookings.map((booking) => <tr key={booking.id}><td><div className="admin-customer-cell"><span className="admin-table-avatar">{booking.customerName.charAt(0)}</span><span><strong>{booking.customerName}</strong><small>{booking.id} · {booking.phone}</small></span></div></td><td><span className="admin-service-name">{serviceTitle(booking.serviceId)}</span><small className="admin-cell-muted">{formatCurrency(servicePrice(booking.serviceId))} (demo)</small></td><td><strong>{formatDate(booking.date)}</strong><small className="admin-cell-muted">{booking.time} WIB</small></td><td><label className="sr-only" htmlFor={`booking-status-${booking.id}`}>Status booking {booking.customerName}</label><select id={`booking-status-${booking.id}`} className={`admin-status-select ${statusClass(booking.status)}`} value={booking.status} onChange={(event) => onStatus(booking.id, event.target.value as BookingStatus)}>{bookingStatuses.map((status) => <option key={status}>{status}</option>)}</select></td><td><button className="admin-icon-button danger" type="button" aria-label={`Hapus booking ${booking.customerName}`} onClick={() => onDelete(booking.id)}><Trash2 size={15} aria-hidden="true" /></button></td></tr>)}
+          {bookings.map((booking) => <tr key={booking.id}><td><div className="admin-customer-cell"><span className="admin-table-avatar">{booking.customerName.charAt(0)}</span><span><strong>{booking.customerName}</strong><small>{booking.id} · {booking.phone}</small></span></div></td><td><span className="admin-service-name">{serviceTitle(booking.serviceId, content)}</span><small className="admin-cell-muted">{formatCurrency(servicePrice(booking.serviceId, content))} (demo)</small></td><td><strong>{formatDate(booking.date)}</strong><small className="admin-cell-muted">{booking.time} WIB</small></td><td><FormLabel className="sr-only" htmlFor={`booking-status-${booking.id}`}>Status booking {booking.customerName}</FormLabel><SelectInput id={`booking-status-${booking.id}`} className={`admin-status-select ${statusClass(booking.status)}`} value={booking.status} onChange={(event) => onStatus(booking.id, event.target.value as BookingStatus)}>{bookingStatuses.map((status) => <option key={status}>{status}</option>)}</SelectInput></td><td><button className="admin-icon-button danger" type="button" aria-label={`Hapus booking ${booking.customerName}`} onClick={() => onDelete(booking.id)}><Trash2 size={15} aria-hidden="true" /></button></td></tr>)}
           {!bookings.length && <tr><td colSpan={5}><EmptyState title="Booking tidak ditemukan" text="Ubah pencarian/filter atau buat booking baru." /></td></tr>}
         </tbody></table></div>
         <p className="admin-table-footnote">Semua pelanggan, nomor, harga, dan booking pada tabel ini adalah data contoh.</p>
@@ -654,9 +724,11 @@ function BookingsSection({
 }
 
 function BookingForm({
+  services,
   onClose,
   onSubmit,
 }: {
+  services: SiteContent["services"];
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
@@ -664,13 +736,13 @@ function BookingForm({
     <section className="admin-panel admin-form-panel" aria-labelledby="new-booking-title">
       <div className="admin-panel-heading"><div><h3 id="new-booking-title"><FilePlus2 size={17} aria-hidden="true" /> Buat booking baru</h3><p>Form demo ini tidak mengirim data ke server.</p></div><button className="admin-icon-button" type="button" aria-label="Tutup form booking" onClick={onClose}><X size={17} aria-hidden="true" /></button></div>
       <form className="admin-form-grid" onSubmit={onSubmit}>
-        <label>Nama pelanggan (demo)<input name="customerName" autoComplete="off" maxLength={80} placeholder="Contoh: Ibu Ani" required /></label>
-        <label>Nomor kontak (demo)<input name="phone" autoComplete="off" inputMode="tel" maxLength={30} placeholder="Contoh: 08xx-xxxx-xxxx" required /></label>
-        <label>Layanan<select name="serviceId" defaultValue="" required><option value="" disabled>Pilih layanan</option>{siteContent.services.map((service) => <option key={service.id} value={service.id}>{service.title} — {service.price}</option>)}</select></label>
-        <label>Tanggal<input name="date" type="date" min={localDateValue()} required /></label>
-        <label>Jam<input name="time" type="time" required /></label>
-        <label className="admin-form-wide">Catatan booking (opsional)<textarea name="note" maxLength={200} placeholder="Catatan administratif saja. Jangan masukkan diagnosis atau data kesehatan." /></label>
-        <div className="admin-form-foot"><span>Booking dibuat dengan status Menunggu. Tarif merupakan simulasi.</span><div><button className="admin-secondary-button" type="button" onClick={onClose}>Batal</button><button className="admin-add-button" type="submit"><Check size={15} aria-hidden="true" /> Simpan booking</button></div></div>
+        <div className="admin-content-field"><FormLabel htmlFor="booking-customer">Nama pelanggan (demo)</FormLabel><TextInput id="booking-customer" name="customerName" autoComplete="off" maxLength={80} placeholder="Contoh: Ibu Ani" required /></div>
+        <div className="admin-content-field"><FormLabel htmlFor="booking-phone">Nomor kontak (demo)</FormLabel><TextInput id="booking-phone" name="phone" autoComplete="off" inputMode="tel" maxLength={30} placeholder="Contoh: 08xx-xxxx-xxxx" required /></div>
+        <div className="admin-content-field"><FormLabel htmlFor="booking-service">Layanan</FormLabel><SelectInput id="booking-service" name="serviceId" defaultValue="" required><option value="" disabled>Pilih layanan</option>{services.filter((service) => service.isActive).map((service) => <option key={service.id} value={service.id}>{service.title} — {service.price}</option>)}</SelectInput></div>
+        <div className="admin-content-field"><FormLabel htmlFor="booking-date">Tanggal</FormLabel><DateInput id="booking-date" name="date" min={localDateValue()} required /></div>
+        <div className="admin-content-field"><FormLabel htmlFor="booking-time">Jam</FormLabel><DateInput id="booking-time" name="time" type="time" required /></div>
+        <div className="admin-form-wide admin-content-field"><FormLabel htmlFor="booking-note">Catatan booking (opsional)</FormLabel><TextareaInput id="booking-note" name="note" maxLength={200} placeholder="Catatan administratif saja. Jangan masukkan diagnosis atau data kesehatan." /></div>
+        <div className="admin-form-foot"><span>Booking dibuat dengan status Menunggu. Tarif merupakan simulasi.</span><div><AdminButton type="button" onClick={onClose}>Batal</AdminButton><AdminButton variant="primary" type="submit"><Check size={15} aria-hidden="true" /> Simpan booking</AdminButton></div></div>
       </form>
     </section>
   );
@@ -700,12 +772,12 @@ function InquiriesSection({
       <div className="admin-page-intro"><div><h2>Inbox pertanyaan</h2><p>Tandai pertanyaan yang sudah ditinjau dan catat tindak lanjut internal.</p></div><button className="admin-secondary-button" type="button" onClick={onExport}><ArrowDownToLine size={15} aria-hidden="true" /> Ekspor CSV</button></div>
       <div className="admin-inquiry-stats"><span><strong>{inquiries.length}</strong> percakapan demo</span><span><strong>{inquiries.filter((item) => item.status === "Baru").length}</strong> menunggu ditinjau</span><span><strong>{inquiries.filter((item) => item.status === "Ditindaklanjuti").length}</strong> ditindaklanjuti</span></div>
       <div className="admin-panel admin-table-panel">
-        <div className="admin-table-toolbar"><div className="admin-search"><Search size={16} aria-hidden="true" /><label className="sr-only" htmlFor="inquiry-search">Cari pertanyaan</label><input id="inquiry-search" value={query} onChange={(event) => onQuery(event.target.value)} placeholder="Cari nama, topik, atau pesan…" /></div><label className="admin-select-label">Status<select value={filter} onChange={(event) => onFilter(event.target.value)}><option>Semua status</option>{inquiryStatuses.map((status) => <option key={status}>{status}</option>)}</select></label><span className="admin-result-count">{inquiries.length} pertanyaan</span></div>
+        <div className="admin-table-toolbar"><div className="admin-search"><Search size={16} aria-hidden="true" /><FormLabel className="sr-only" htmlFor="inquiry-search">Cari pertanyaan</FormLabel><TextInput id="inquiry-search" value={query} onChange={(event) => onQuery(event.target.value)} placeholder="Cari nama, topik, atau pesan…" /></div><FormLabel className="admin-select-label">Status<SelectInput value={filter} onChange={(event) => onFilter(event.target.value)}><option>Semua status</option>{inquiryStatuses.map((status) => <option key={status}>{status}</option>)}</SelectInput></FormLabel><span className="admin-result-count">{inquiries.length} pertanyaan</span></div>
         <div className="admin-inquiry-list">{inquiries.map((inquiry) => <article className="admin-inquiry-card" key={inquiry.id}>
           <div className="admin-inquiry-card-head"><div className="admin-customer-cell"><span className="admin-table-avatar inquiry-avatar">{inquiry.customerName.charAt(0)}</span><span><strong>{inquiry.customerName}</strong><small>{inquiry.id} · {formatDate(inquiry.receivedAt)} pukul {formatTime(inquiry.receivedAt)}</small></span></div><StatusBadge status={inquiry.status} /></div>
           <span className="admin-inquiry-topic">{inquiry.topic}</span><p className="admin-inquiry-message">{inquiry.message}</p>
-          <label className="admin-followup-label" htmlFor={`followup-${inquiry.id}`}>Catatan tindak lanjut internal<textarea id={`followup-${inquiry.id}`} value={inquiry.followUpNote} maxLength={300} placeholder="Catatan singkat, jangan masukkan informasi kesehatan…" onChange={(event) => onUpdate(inquiry.id, { followUpNote: event.target.value })} /></label>
-          <div className="admin-inquiry-actions"><label className="sr-only" htmlFor={`inquiry-status-${inquiry.id}`}>Status pertanyaan {inquiry.customerName}</label><select id={`inquiry-status-${inquiry.id}`} className={`admin-status-select ${statusClass(inquiry.status)}`} value={inquiry.status} onChange={(event) => onUpdate(inquiry.id, { status: event.target.value as InquiryStatus })}>{inquiryStatuses.map((status) => <option key={status}>{status}</option>)}</select><button className="admin-icon-button danger" type="button" aria-label={`Hapus pertanyaan ${inquiry.customerName}`} onClick={() => onDelete(inquiry.id)}><Trash2 size={15} aria-hidden="true" /></button></div>
+          <FormLabel className="admin-followup-label" htmlFor={`followup-${inquiry.id}`}>Catatan tindak lanjut internal<TextareaInput id={`followup-${inquiry.id}`} value={inquiry.followUpNote} maxLength={300} placeholder="Catatan singkat, jangan masukkan informasi kesehatan…" onChange={(event) => onUpdate(inquiry.id, { followUpNote: event.target.value })} /></FormLabel>
+          <div className="admin-inquiry-actions"><FormLabel className="sr-only" htmlFor={`inquiry-status-${inquiry.id}`}>Status pertanyaan {inquiry.customerName}</FormLabel><SelectInput id={`inquiry-status-${inquiry.id}`} className={`admin-status-select ${statusClass(inquiry.status)}`} value={inquiry.status} onChange={(event) => onUpdate(inquiry.id, { status: event.target.value as InquiryStatus })}>{inquiryStatuses.map((status) => <option key={status}>{status}</option>)}</SelectInput><button className="admin-icon-button danger" type="button" aria-label={`Hapus pertanyaan ${inquiry.customerName}`} onClick={() => onDelete(inquiry.id)}><Trash2 size={15} aria-hidden="true" /></button></div>
         </article>)}
           {!inquiries.length && <EmptyState title="Pertanyaan tidak ditemukan" text="Ubah pencarian atau filter status." />}
         </div>
@@ -721,6 +793,7 @@ function ReportsSection({
   completed,
   revenue,
   maxServiceCount,
+  services,
   onMonth,
   onExport,
 }: {
@@ -729,6 +802,7 @@ function ReportsSection({
   completed: Booking[];
   revenue: number;
   maxServiceCount: number;
+  services: SiteContent["services"];
   onMonth: (value: string) => void;
   onExport: () => void;
 }) {
@@ -740,7 +814,7 @@ function ReportsSection({
 
   return (
     <section className="admin-section-content">
-      <div className="admin-page-intro"><div><h2>Laporan ringkas</h2><p>Ringkasan booking dan estimasi pendapatan berdasarkan data demo.</p></div><div className="admin-action-group"><label className="admin-month-filter">Periode<input type="month" value={month} onChange={(event) => onMonth(event.target.value)} /></label><button className="admin-secondary-button" type="button" onClick={onExport}><ArrowDownToLine size={15} aria-hidden="true" /> Ekspor CSV</button></div></div>
+      <div className="admin-page-intro"><div><h2>Laporan ringkas</h2><p>Ringkasan booking dan estimasi pendapatan berdasarkan data demo.</p></div><div className="admin-action-group"><FormLabel className="admin-month-filter">Periode<DateInput type="month" value={month} onChange={(event) => onMonth(event.target.value)} /></FormLabel><button className="admin-secondary-button" type="button" onClick={onExport}><ArrowDownToLine size={15} aria-hidden="true" /> Ekspor CSV</button></div></div>
       <div className="admin-stats-grid report-stats">
         <StatCard icon={ClipboardList} label="Total booking" value={String(bookings.length)} detail="Dalam periode dipilih" tone="sage" />
         <StatCard icon={Check} label="Selesai" value={String(completed.length)} detail="Booking berstatus selesai" tone="blue" />
@@ -754,7 +828,7 @@ function ReportsSection({
         </section>
         <section className="admin-panel">
           <div className="admin-panel-heading"><div><h3>Layanan terpopuler</h3><p>Berdasarkan booking selesai</p></div></div>
-          <div className="admin-report-services">{siteContent.services.map((service) => {
+          <div className="admin-report-services">{services.map((service) => {
             const count = completed.filter((booking) => booking.serviceId === service.id).length;
             return <div className="admin-report-service" key={service.id}><div><span>{service.title}</span><strong>{count} booking</strong></div><div className="admin-report-track"><span style={{ width: `${(count / maxServiceCount) * 100}%` }} /></div></div>;
           })}</div>

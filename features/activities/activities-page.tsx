@@ -1,15 +1,15 @@
+"use client";
+
 import { SiteFooter } from "../../components/layout/site-footer";
 import { SiteHeader } from "../../components/layout/site-header";
 import { Icon } from "../../components/ui/icon";
-import { ActivityCard, type Activity } from "./activity-card";
-
-const activities: Activity[] = [
-  { title: "Yoga untuk Ibu", date: "2026-11-07", dateLabel: "Sabtu, 7 November 2026 · 09.00 WIB", category: "GERAK & RELAKSASI", description: "Ikuti gerakan ringan dan latihan pernapasan bersama instruktur. Cocok untuk pemula; sesuaikan gerakan dengan kondisi tubuh dan arahan tenaga kesehatan." },
-  { title: "Kelas Persiapan Persalinan", date: "2026-11-14", dateLabel: "Sabtu, 14 November 2026 · 10.00 WIB", category: "KELAS EDUKASI", description: "Pelajari tahapan persalinan, persiapan yang bisa dilakukan, dan peran pendamping. Sesi ditutup dengan tanya jawab bersama bidan." },
-  { title: "Perawatan Bayi Baru Lahir", date: "2026-11-21", dateLabel: "Sabtu, 21 November 2026 · 10.00 WIB", category: "DISKUSI & BERBAGI", description: "Diskusi santai tentang perawatan dasar bayi baru lahir dan mengenali kebutuhannya, bersama bidan dan sesama orang tua." },
-];
+import { ActivityCard } from "./activity-card";
+import { usePublicSiteContent } from "../../components/layout/public-site-content-provider";
+import { ContactLink } from "../../components/ui/contact-link";
 
 export function ActivitiesPage() {
+  const content = usePublicSiteContent();
+  const activities = content.activities.filter((activity) => activity.isActive);
   return (
     <>
       <SiteHeader />
@@ -24,10 +24,10 @@ export function ActivitiesPage() {
         </section>
         <section className="activities-list-section container" id="daftar-kegiatan">
           <div className="activities-list-heading"><div><span className="eyebrow">AGENDA IBU</span><h2>Pilih kegiatan</h2></div><p>Pilih kegiatan untuk membaca jadwal dan gambaran acaranya. Tanggal, biaya, dan tempat dikonfirmasi saat booking.</p></div>
-          <div className="activities-list">{activities.map((activity) => <ActivityCard key={activity.title} activity={activity} />)}</div>
+          <div className="activities-list">{activities.map((activity) => <ActivityCard key={activity.id} activity={activity} />)}</div>
           <div className="activities-note"><Icon name="heart" size={18} /><p>Kegiatan bukan pengganti pemeriksaan atau saran medis. Konsultasikan kondisi kesehatan Ibu kepada tenaga kesehatan.</p></div>
         </section>
-        <section className="booking-section" id="booking"><div className="container booking-inner"><span className="booking-flower" aria-hidden="true"><Icon name="flower" size={25} /></span><span className="eyebrow">KURSI TERBATAS</span><h2>Ingin ikut kegiatan<br /><em>bersama kami?</em></h2><p>Jadwal, lokasi, biaya, dan ketersediaan tempat dapat berubah. Hubungi bidan untuk konfirmasi dan pemesanan.</p><a className="button" href="https://wa.me/" target="_blank" rel="noreferrer">Tanya & booking <Icon name="arrow-up-right" size={15} /></a></div></section>
+        <section className="booking-section" id="booking"><div className="container booking-inner"><span className="booking-flower" aria-hidden="true"><Icon name="flower" size={25} /></span><span className="eyebrow">KURSI TERBATAS</span><h2>Ingin ikut kegiatan<br /><em>bersama kami?</em></h2><p>Jadwal, lokasi, biaya, dan ketersediaan tempat dapat berubah. Hubungi bidan untuk konfirmasi dan pemesanan.</p><ContactLink className="button" message="Halo, saya ingin bertanya tentang kegiatan.">Tanya & booking <Icon name="arrow-up-right" size={15} /></ContactLink></div></section>
       </main>
       <SiteFooter />
     </>
